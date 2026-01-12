@@ -1,40 +1,196 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# Voice Bot - upGrad School of Technology
 
-## Getting Started
+A real-time voice chat application powered by WebRTC and LUNA AI, featuring RAG (Retrieval Augmented Generation) with Qdrant vector database for intelligent context-aware responses.
 
-First, run the development server:
+## Features
+
+- 🎤 Real-time voice conversation using WebRTC
+- 🤖 AI-powered responses with Indian English accent
+- 🔍 RAG-based context retrieval from Qdrant vector database
+- ⚡ Local embeddings for fast query processing
+- 💬 Dynamic context enrichment based on user questions
+- 🎨 Theme customization support
+
+## Prerequisites
+
+- Node.js 18+ and npm
+- Qdrant vector database (local or remote)
+- LUNA AI API key (for voice AI backend)
+
+## Installation
+
+1. **Clone the repository** (if applicable) or navigate to the project directory:
+   ```bash
+   cd voice-bot
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Set up environment variables**:
+   Create a `.env.local` file in the root directory with the following variables:
+   ```env
+   # Qdrant Configuration
+   QDRANT_URL=http://localhost:6333
+   QDRANT_API_KEY=your_qdrant_api_key_optional
+   QDRANT_COLLECTION_NAME=document_chunks
+
+   # LUNA AI Configuration
+   PIXA_API_KEY=your_luna_ai_api_key
+
+   # Optional: Backend URL (if using external backend)
+   BACKEND_URL=https://your-backend-url.com
+   AUTH_KEY=your_auth_key
+   ```
+
+## Running the Application
+
+### Development Mode
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+The application will start on `http://localhost:3000`
 
-You can start editing the page by modifying `pages/index.js`. The page auto-updates as you edit the file.
+### Production Build
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.js`.
+```bash
+npm run build
+npm start
+```
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+## Usage
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. **Open the application** in your browser at `http://localhost:3000`
 
-## Learn More
+2. **Click the microphone button** (bottom-right corner) to open the voice chat window
 
-To learn more about Next.js, take a look at the following resources:
+3. **Allow microphone access** when prompted by your browser
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+4. **Start speaking** - The AI will:
+   - Transcribe your speech
+   - Search Qdrant for relevant context
+   - Generate contextual responses with Indian English accent
+   - Speak the response back to you
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project Structure
 
-## Deploy on Vercel
+```
+voice-bot/
+├── src/
+│   ├── app/
+│   │   └── api/
+│   │       └── assistant/
+│   │           └── voice/
+│   │               ├── offer/          # WebRTC SDP offer/answer exchange
+│   │               ├── ice-server/      # ICE servers for WebRTC
+│   │               ├── rag-context/     # RAG context retrieval endpoint
+│   │               └── save/            # Conversation saving
+│   ├── components/
+│   │   ├── VoiceChat.jsx               # Main WebRTC voice chat component
+│   │   ├── voiceChatWindows.tsx        # Voice chat UI window
+│   │   └── VoiceChatWrapper.jsx        # Floating microphone button
+│   ├── lib/
+│   │   ├── clients/
+│   │   │   ├── qdrant.js              # Qdrant client configuration
+│   │   │   ├── localEmbedding.js      # Local embedding generation
+│   │   │   └── smartEmbedding.js      # Smart embedding with fallback
+│   │   ├── rag/
+│   │   │   ├── retrieve.js             # RAG retrieval wrapper
+│   │   │   └── qdrant-retrieve.js      # Qdrant vector search implementation
+│   │   └── webrtc/
+│   │       ├── connection.js          # WebRTC connection utilities
+│   │       └── events.js               # WebRTC event handlers
+│   └── pages/
+│       ├── index.js                   # Home page
+│       └── _app.js                     # Next.js app wrapper
+└── package.json
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Key Technologies
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+- **Next.js 16** - React framework
+- **WebRTC** - Real-time voice communication
+- **LUNA AI** - Voice AI backend (api.heypixa.ai)
+- **Qdrant** - Vector database for RAG
+- **@xenova/transformers** - Local embedding generation
+- **next-themes** - Theme management
+
+## Configuration
+
+### Qdrant Setup
+
+1. **Install Qdrant** (if running locally):
+   ```bash
+   docker run -p 6333:6333 qdrant/qdrant
+   ```
+
+2. **Or use Qdrant Cloud**: Set `QDRANT_URL` to your cloud instance URL
+
+3. **Collection Setup**: The collection will be created automatically on first use with:
+   - Named vector: `content` (1536 dimensions)
+   - Distance metric: Cosine similarity
+
+### LUNA AI Setup
+
+1. Get your API key from [LUNA AI](https://heypixa.ai)
+2. Add it to `.env.local` as `PIXA_API_KEY`
+
+## Performance Optimizations
+
+The application includes several performance optimizations:
+
+- ✅ **Model warmup** - Embedding model pre-loaded on server startup
+- ✅ **Static imports** - No dynamic imports for faster execution
+- ✅ **Reduced logging** - Verbose logs only in development mode
+- ✅ **Optimized timeouts** - Fast-fail timeouts for better UX
+- ✅ **Cached collection info** - Qdrant collection info cached to avoid repeated checks
+
+## Troubleshooting
+
+### Microphone not working
+- Check browser permissions for microphone access
+- Ensure you're using HTTPS (or localhost) - required for WebRTC
+
+### Connection issues
+- Verify `PIXA_API_KEY` is set correctly
+- Check network connectivity to LUNA AI backend
+- Verify ICE servers are accessible
+
+### Qdrant connection errors
+- Ensure Qdrant is running and accessible at `QDRANT_URL`
+- Check `QDRANT_API_KEY` if using authenticated Qdrant instance
+- Verify collection exists or will be created automatically
+
+### Slow RAG retrieval
+- Check Qdrant server performance
+- Verify network latency to Qdrant instance
+- Consider using a local Qdrant instance for better performance
+
+## Development
+
+### Running in Development Mode
+
+```bash
+npm run dev
+```
+
+The app will automatically reload on file changes.
+
+### Building for Production
+
+```bash
+npm run build
+npm start
+```
+
+## License
+
+[Add your license information here]
+
+## Support
+
+For issues or questions, please [create an issue](link-to-issues) or contact the development team.
