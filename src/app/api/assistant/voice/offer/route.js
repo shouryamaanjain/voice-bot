@@ -45,7 +45,7 @@ function buildContextBlock(chunks) {
 export async function POST(request) {
 
   // Backend URL from environment variable (with trailing slash removed)
-  const backendUrl = (process.env.BACKEND_URL || "https://fal.run/Pixa-AI/luna-speech-openai").replace(/\/$/, "");
+  const backendUrl = (process.env.BACKEND_URL || "https://upgrad.heypixa.ai").replace(/\/$/, "");
   
   // Hardcoded for testing
   const pixaApiKey = "lu_7f3b29e8c4a1462dba8fd91f53b7e2a1";

@@ -114,7 +114,7 @@ voice-bot/
 
 - **Next.js 16** - React framework
 - **WebRTC** - Real-time voice communication
-- **LUNA AI** - Voice AI backend (fal.run/Pixa-AI/luna-speech-openai)
+- **LUNA AI** - Voice AI backend (upgrad.heypixa.ai)
 - **Qdrant** - Vector database for RAG
 - **@xenova/transformers** - Local embedding generation
 - **next-themes** - Theme management
