@@ -114,7 +114,7 @@ voice-bot/
 
 - **Next.js 16** - React framework
 - **WebRTC** - Real-time voice communication
-- **LUNA AI** - Voice AI backend (api.heypixa.ai)
+- **LUNA AI** - Voice AI backend (fal.run/Pixa-AI/luna-speech-openai)
 - **Qdrant** - Vector database for RAG
 - **@xenova/transformers** - Local embedding generation
 - **next-themes** - Theme management
@@ -169,6 +169,40 @@ The application includes several performance optimizations:
 - Check Qdrant server performance
 - Verify network latency to Qdrant instance
 - Consider using a local Qdrant instance for better performance
+
+## Fixes memo
+
+### Issues Fixed
+
+**What was wrong earlier:**
+
+| Problem | Impact |
+|---------|--------|
+| Huge system prompt sent with every message | Inefficient, slow responses |
+| 3-4 duplicate/useless system prompts scattered in code | Confusion, inconsistency |
+| Greeting logic calling `session.update` | Was overwriting the original instructions |
+| Irrelevant RAG chunks being sent | Low-similarity context confusing the AI |
+
+**Fixes Applied:**
+
+| Fix | Details |
+|-----|---------|
+| Single source of instruction | `ISHU_VOICE_PROMPT` in `ishu-voice-prompt.js` - hardcoded in offer route |
+| Removed useless prompts | Cleaned up duplicate prompts from codebase |
+| Removed `session.update` greeting | Greeting trigger kept, but no instruction override |
+| Similarity threshold | Only send RAG context if similarity >= 0.25 |
+
+**Key Files Changed:**
+- `src/app/api/assistant/voice/offer/route.js` - System prompt + session config
+- `src/lib/prompts/ishu-voice-prompt.js` - Single source of instructions
+- `src/app/api/assistant/voice/rag-context/route.js` - Similarity threshold
+- `src/components/VoiceChat.jsx` - Removed `session.update`, cleaned up context format
+
+**Architecture (After Fix):**
+- System prompt: Sent **once** at session creation
+- RAG context: Sent **per-message** only when relevant (similarity >= 0.25)
+
+---
 
 ## Development
 

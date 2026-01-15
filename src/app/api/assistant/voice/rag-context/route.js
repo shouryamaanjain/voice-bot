@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { retrieveChunks } from "@/lib/rag/retrieve";
-import { ISHU_VOICE_PROMPT } from "@/lib/prompts/ishu-voice-prompt";
 import { warmupLocalEmbedding } from "@/lib/clients/localEmbedding";
 
 // ✅ OPTIMIZATION: Warmup embedding model on server startup (runs once)
@@ -12,15 +11,14 @@ if (typeof window === 'undefined') { // Server-side only
   });
 }
 
-// ✅ OPTIMIZATION: Cache default instructions at module level (computed once)
-let DEFAULT_INSTRUCTIONS_CACHE = null;
+// NOTE: System prompt (ISHU_VOICE_PROMPT) is no longer needed here
+// It's set once at connection time in the offer API
+// This endpoint now returns ONLY the RAG context for each message
 
-function getDefaultInstructions() {
-  if (!DEFAULT_INSTRUCTIONS_CACHE) {
-    DEFAULT_INSTRUCTIONS_CACHE = ISHU_VOICE_PROMPT;
-  }
-  return DEFAULT_INSTRUCTIONS_CACHE;
-}
+// Similarity threshold - chunks below this score are considered irrelevant
+// When context is irrelevant, we return null so Luna relies on system prompt
+// (which has off-topic redirection rules)
+const SIMILARITY_THRESHOLD = 0.25;
 
 /**
  * Build context block from retrieved chunks for RAG integration
@@ -71,17 +69,9 @@ export async function POST(request) {
       );
     }
 
-    // ✅ DIRECT QDRANT FETCH - No cache, always fetch from Qdrant for performance testing
-    console.log(`[Voice Bot Timing] 🔄 Fetching directly from Qdrant...`);
+    // ✅ OPTIMIZED: Returns only RAG context (system prompt set at connection time)
+    console.log(`[Voice Bot Timing] 🔄 Fetching RAG context from Qdrant...`);
     console.log(`[Voice Bot Timing]    📝 Query: "${question.trim().substring(0, 80)}${question.trim().length > 80 ? '...' : ''}"`);
-
-    // ✅ OPTIMIZATION: Use cached default instructions
-    const defaultInstructionsStartTime = Date.now();
-    const defaultInstructions = getDefaultInstructions();
-    const defaultInstructionsDuration = Date.now() - defaultInstructionsStartTime;
-    if (defaultInstructionsDuration > 1) {
-      console.log(`[Voice Bot Timing]    ⏱️  Default Instructions Load: ${defaultInstructionsDuration}ms`);
-    }
 
     // ⏱️ STEP 2.1.1 & 2.1.2: RAG Retrieval (Embedding + Vector Search)
     try {
@@ -106,10 +96,36 @@ export async function POST(request) {
       console.log(`[Voice Bot Timing]    ℹ️  (See detailed embedding & vector search logs above)`);
 
       if (chunks && chunks.length > 0) {
+        // ✅ Check similarity threshold - filter out irrelevant context
+        const topSimilarity = chunks[0]?.similarity || 0;
+
+        if (topSimilarity < SIMILARITY_THRESHOLD) {
+          // Context is not relevant - return null so Luna uses system prompt guardrails
+          const totalApiDuration = Date.now() - apiStartTime;
+          console.log(`[Voice Bot Timing] ⚠️ STEP 2.1.3: Context below similarity threshold`);
+          console.log(`[Voice Bot Timing]    📊 Top similarity: ${topSimilarity.toFixed(4)} < ${SIMILARITY_THRESHOLD} (threshold)`);
+          console.log(`[Voice Bot Timing]    🚫 Returning null context - Luna will use system prompt guardrails`);
+          console.log(`[Voice Bot Timing]    ⏱️  Duration: ${totalApiDuration}ms`);
+
+          return NextResponse.json({
+            context: null,
+            chunksFound: 0,
+            reason: 'below_threshold',
+            topSimilarity: topSimilarity,
+          }, {
+            headers: {
+              'Cache-Control': 'no-cache, no-store, must-revalidate',
+              'Connection': 'keep-alive',
+              'Content-Type': 'application/json',
+            },
+          });
+        }
+
         // ⏱️ STEP 2.1.3: Building Context Block
         const contextBuildStartTime = Date.now();
         console.log(`[Voice Bot Timing] 🔄 STEP 2.1.3: Building context block...`);
         console.log(`[Voice Bot Timing]    📊 Chunks: ${chunks.length}`);
+        console.log(`[Voice Bot Timing]    ✅ Top similarity: ${topSimilarity.toFixed(4)} >= ${SIMILARITY_THRESHOLD} (threshold)`);
         
         const contextBlock = buildContextBlock(chunks);
         
@@ -118,39 +134,11 @@ export async function POST(request) {
         console.log(`[Voice Bot Timing]    ⏱️  Duration: ${contextBuildDuration}ms`);
         console.log(`[Voice Bot Timing]    📊 Size: ${contextBlock.length} characters`);
         
-        // ✅ Build instructions with context (condensed for faster processing)
-        const additionalInstructions = 
-          "\n\n=== RELEVANT INFORMATION ===\n" +
-          contextBlock + "\n=== END OF INFORMATION ===\n\n" +
-          "Use ONLY the information above to answer. Answer naturally with Indian English patterns (\"See, basically...\", \"Actually...\", \"₹8 lakhs only\"). " +
-          "Never mention 'context', 'knowledge base', 'information provided', or similar phrases. Answer as if you know this information directly. " +
-          "ALWAYS start EVERY response with [Indian accent, Pace, Pitch, Tone, Length]. Child-friendly only.";
-        
-        const instructions = defaultInstructions + additionalInstructions;
-        
-        // ✅ OPTIMIZATION: Track and log total instruction size
-        const defaultInstructionsSize = defaultInstructions.length;
-        const additionalInstructionsSize = additionalInstructions.length;
-        const totalInstructionsSize = instructions.length;
-        const totalSizeKB = (totalInstructionsSize / 1024).toFixed(2);
-        const totalSizeMB = (totalInstructionsSize / (1024 * 1024)).toFixed(3);
-        
-        console.log(`[Voice Bot Timing] 📊 Instruction Size Breakdown:`);
-        console.log(`[Voice Bot Timing]    📝 Default Instructions: ${defaultInstructionsSize.toLocaleString()} chars (${(defaultInstructionsSize / 1024).toFixed(2)} KB)`);
-        console.log(`[Voice Bot Timing]    📝 Additional Instructions: ${additionalInstructionsSize.toLocaleString()} chars (${(additionalInstructionsSize / 1024).toFixed(2)} KB)`);
-        console.log(`[Voice Bot Timing]    📝 Context Block: ${contextBlock.length.toLocaleString()} chars (${(contextBlock.length / 1024).toFixed(2)} KB)`);
-        console.log(`[Voice Bot Timing]    📊 Total Instructions: ${totalInstructionsSize.toLocaleString()} chars (${totalSizeKB} KB / ${totalSizeMB} MB)`);
-        
-        // ✅ Warn if total size exceeds recommended limits
-        if (totalInstructionsSize > 50000) { // 50KB
-          console.warn(`[Voice Bot Timing] ⚠️  Large instruction size (${totalSizeKB} KB) may impact Luna AI processing time`);
-          console.warn(`[Voice Bot Timing]    💡 Consider reducing context chunks or optimizing system prompt`);
-        }
-        
-        if (totalInstructionsSize > 100000) { // 100KB
-          console.error(`[Voice Bot Timing] ❌ Very large instruction size (${totalSizeKB} KB) - may cause significant latency`);
-          console.error(`[Voice Bot Timing]    💡 Strongly recommend reducing context chunks or system prompt size`);
-        }
+        // ✅ OPTIMIZATION: Return ONLY the context, not full instructions
+        // System prompt is already set at connection time - no need to resend
+        const contextSizeKB = (contextBlock.length / 1024).toFixed(2);
+        console.log(`[Voice Bot Timing] 📊 Context Size: ${contextBlock.length.toLocaleString()} chars (${contextSizeKB} KB)`);
+        console.log(`[Voice Bot Timing]    ✅ OPTIMIZED: Returning only context (not full instructions)`);
 
         // ⏱️ STEP 2.1.4: API Response Ready
         const totalApiDuration = Date.now() - apiStartTime;
@@ -159,81 +147,50 @@ export async function POST(request) {
         console.log(`[Voice Bot Timing] ⏱️ ========================================`);
         console.log(`[Voice Bot Timing] 📊 COMPLETE API BREAKDOWN:`);
         const totalRequestHandlingTime = Date.now() - apiStartTime;
-        const overheadTime = totalRequestHandlingTime - totalApiDuration;
         
         console.log(`[Voice Bot Timing]    ⏱️  RAG Retrieval (Embedding + Search): ${ragRetrievalDuration}ms`);
         console.log(`[Voice Bot Timing]    ⏱️  Context Building: ${contextBuildDuration}ms`);
-        console.log(`[Voice Bot Timing]    ⏱️  API Processing: ${totalApiDuration}ms`);
-        console.log(`[Voice Bot Timing]    ⏱️  Next.js Overhead: ${overheadTime}ms`);
         console.log(`[Voice Bot Timing]    ⏱️  TOTAL REQUEST HANDLING: ${totalRequestHandlingTime}ms`);
         console.log(`[Voice Bot Timing] ⏱️ ========================================`);
-        console.log(`[Voice Bot Timing] ℹ️  NOTE: Client-side logs (STEP 1, STEP 2, STEP 3) are in browser console`);
 
-        // ✅ Direct Qdrant fetch - no cache
+        // ✅ OPTIMIZATION: Return only context, not instructions
+        // Client will use this context directly without the 12KB+ system prompt
         const responseData = {
           context: contextBlock,
-          instructions: instructions,
           chunksFound: chunks.length,
+          // instructions field removed - system prompt is set at connection time
         };
         
         return NextResponse.json(responseData, {
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Connection': 'keep-alive', // ✅ Keep connection alive for reuse
-            'Vary': 'Accept-Encoding', // ✅ Important for compression
+            'Connection': 'keep-alive',
             'Content-Type': 'application/json',
-            'X-Content-Type-Options': 'nosniff', // ✅ Security header
-            'X-Frame-Options': 'DENY', // ✅ Security header
           },
         });
       } else {
-        // No chunks found - STRICT: Do not respond at all (handled client-side)
-        // Return null context and instructions that will prevent response
-        const noContextInstructions = 
-          defaultInstructions + "\n\n" +
-          "CRITICAL: No relevant information is available. DO NOT generate any response. DO NOT send any message. Stay completely silent. " +
-          "This is a strict requirement - when no information is provided, you must remain silent.";
-
-        // ⏱️ STEP 2.1.4: API Response Ready (No Context)
+        // No chunks found - return null context (client handles this)
         const totalApiDuration = Date.now() - apiStartTime;
-        console.log(`[Voice Bot Timing] ✅ STEP 2.1.4: API response ready (no context)`);
+        console.log(`[Voice Bot Timing] ✅ STEP 2.1.4: API response ready (no context found)`);
         console.log(`[Voice Bot Timing]    ⏱️  Duration: ${totalApiDuration}ms`);
-        console.log(`[Voice Bot Timing] ⏱️ ========================================`);
-        console.log(`[Voice Bot Timing] 📊 COMPLETE API BREAKDOWN (NO CONTEXT):`);
-        const totalRequestHandlingTime = Date.now() - apiStartTime;
-        const overheadTime = totalRequestHandlingTime - totalApiDuration;
-        
-        console.log(`[Voice Bot Timing]    ⏱️  RAG Retrieval: ${ragRetrievalDuration}ms (0 chunks found)`);
-        console.log(`[Voice Bot Timing]    ⏱️  Context Building: SKIPPED (no chunks)`);
-        console.log(`[Voice Bot Timing]    ⏱️  API Processing: ${totalApiDuration}ms`);
-        console.log(`[Voice Bot Timing]    ⏱️  Next.js Overhead: ${overheadTime}ms`);
-        console.log(`[Voice Bot Timing]    ⏱️  TOTAL REQUEST HANDLING: ${totalRequestHandlingTime}ms`);
-        console.log(`[Voice Bot Timing] ⏱️ ========================================`);
-        console.log(`[Voice Bot Timing] ℹ️  NOTE: Client-side logs (STEP 1, STEP 2, STEP 3) are in browser console`);
+        console.log(`[Voice Bot Timing]    📊 RAG Retrieval: ${ragRetrievalDuration}ms (0 chunks)`);
 
-        // ✅ Direct Qdrant fetch - no cache
-        const responseData = {
+        return NextResponse.json({
           context: null,
-          instructions: noContextInstructions,
           chunksFound: 0,
-        };
-        
-        return NextResponse.json(responseData, {
+        }, {
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'Connection': 'keep-alive', // ✅ Keep connection alive for reuse
-            'Vary': 'Accept-Encoding', // ✅ Important for compression
+            'Connection': 'keep-alive',
             'Content-Type': 'application/json',
-            'X-Content-Type-Options': 'nosniff', // ✅ Security header
-            'X-Frame-Options': 'DENY', // ✅ Security header
           },
         });
       }
     } catch (ragError) {
-      // Return default instructions if RAG retrieval fails
+      // Return null context if RAG retrieval fails
+      console.error(`[Voice Bot Timing] ❌ RAG retrieval error: ${ragError.message}`);
       return NextResponse.json({
         context: null,
-        instructions: defaultInstructions,
         chunksFound: 0,
         error: ragError.message,
       });

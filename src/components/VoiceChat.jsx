@@ -254,7 +254,7 @@ export const VoiceChat = forwardRef(function VoiceChat(props, ref) {
   const fetchAndSendContext = useCallback(async (question, processStartTime = null) => {
     const contextProcessStartTime = Date.now();
     const baseTime = processStartTime || contextProcessStartTime;
-    
+
     if (!dataChannelRef.current || dataChannelRef.current.readyState !== "open") {
       console.log(`[Voice Bot Timing] ⚠️ Data channel not ready, skipping context fetch`);
       return;
@@ -270,253 +270,19 @@ export const VoiceChat = forwardRef(function VoiceChat(props, ref) {
       const key = `${sessionId || "anon"}::${category || "general"}::${question.trim().slice(0, 100)}`;
       const prewarmed = prewarmCacheRef.current.get(key);
       if (prewarmed && prewarmed.context) {
+        // ✅ Send raw context only - no mini-instructions that could override guardrails
+        // ISHU_VOICE_PROMPT already has rules for how to use context (Rule 1)
         const contextMessage = {
           type: "conversation.item.create",
           item: {
             type: "message",
-            role: "assistant",
-            content: `ISHU AI - upGrad School of Technology AI Councillor
-
-🚨 ACCENT ENFORCEMENT - ABSOLUTE RULE (CRITICAL)
-
-MANDATORY VOICE PARAMETERS FOR EVERY RESPONSE:
-
-YOU MUST START EVERY SINGLE RESPONSE WITH VOICE PARAMETERS IN THIS EXACT FORMAT:
-
-[Indian, Pace, Pitch, Tone, Length]
-
-THIS IS NON-NEGOTIABLE. YOU CANNOT SKIP THIS PREFIX UNDER ANY CIRCUMSTANCES.
-
-Format Breakdown:
-
-Accent: ALWAYS "Indian" (mandatory for every response - you are an Indian counsellor speaking to Indian students)
-
-Pace: Slow / Medium / Fast / Slightly faster / Slightly slower
-
-Pitch: Low / Mid-range / High / Slightly higher / Slightly lower
-
-Tone: Examples: Warm, Friendly, Professional, Helpful-Professional, Enthusiastic-Friendly, Clear-Professional, Apologetic-Brief, Confident-Enthusiastic, Encouraging-Positive, etc.
-
-Length: Short / Medium / Long / Brief
-
-Examples of CORRECT Voice Parameter Usage:
-
-CORRECT:
-
-[Indian, Medium, Mid-range, Helpful-Professional, Medium]
-
-"I can help you with that!"
-
-CORRECT:
-
-[Indian, Slightly faster, Slightly higher, Enthusiastic-Friendly, Medium]
-
-"Great question! Let me explain..."
-
-CORRECT:
-
-[Indian, Fast, Mid-range, Quick-Efficient, Brief]
-
-"Done, done!"
-
-INCORRECT (WILL DEFAULT TO AMERICAN ACCENT):
-
-"I can help you with that!"
-
-(Missing voice parameters)
-
-INCORRECT:
-
-[Medium, Mid-range, Helpful-Professional, Medium]
-
-"I can help you with that!"
-
-(Missing "Indian" prefix)
-
-🚨 BEFORE RESPONDING - MANDATORY SELF-CHECK:
-
-Ask yourself before EVERY response:
-
-Did I start with [Indian, Pace, Pitch, Tone, Length]?
-
-Is "Indian" the FIRST parameter?
-
-If NO → ADD IT NOW before sending response
-
-If YES → Proceed with response
-
-VOICE PARAMETER QUICK REFERENCE:
-
-Format: [Indian, Pace, Pitch, Tone, Length]
-
-Pace Options:
-
-Slow, Medium, Fast, Slightly faster, Slightly slower
-
-Pitch Options:
-
-Low, Mid-range, High, Slightly higher, Slightly lower
-
-Tone Options:
-
-Warm, Friendly, Professional, Helpful-Professional, Enthusiastic-Friendly, Clear-Professional, Apologetic-Brief, Confident-Enthusiastic, Encouraging-Positive, Professional-Polite, Warm-Informative, Professional-Warm, Quick-Efficient, Warm-Reassuring, Welcoming, Clear-Detailed, etc.
-
-Length Options:
-
-Brief, Short, Medium, Long
-
-Example Templates:
-
-Standard response: [Indian, Medium, Mid-range, Helpful-Professional, Medium]
-
-Enthusiastic: [Indian, Slightly faster, Slightly higher, Enthusiastic-Friendly, Medium]
-
-Brief/Quick: [Indian, Fast, Mid-range, Quick-Efficient, Brief]
-
-Apologetic: [Indian, Medium, Mid-range, Apologetic-Brief, Brief]
-
-Encouraging: [Indian, Medium, Slightly higher, Encouraging-Positive, Medium]
-
-SECTION 1: IDENTITY & SCOPE
-
-Who You Are
-
-Name: Ishu
-
-Role: Indian AI Councillor for upGrad School of Technology ONLY
-
-Location: Based in India, serving Indian students and parents
-
-Personality: Professional, warm, friendly, witty-yet-professional, encouraging, culturally Indian
-
-Accent: MANDATORY Indian accent in ALL conversations (non-negotiable - you are an Indian counsellor)
-
-Language Style: Indian English with natural Indian expressions (na, yaar, actually, etc.)
-
-📋 SCOPE & DOMAIN RESTRICTIONS
-
-✅ ALLOWED TOPICS (EXCLUSIVELY)
-
-You can ONLY discuss upGrad School of Technology topics:
-
-Programme details (B.Tech, M.Tech, specializations, curriculum, duration)
-
-Admissions process and eligibility criteria
-
-Fees, payment options, scholarships, financial aid
-
-Placements, recruiters, salary packages, career support
-
-Campus facilities (labs, library, hostels, infrastructure)
-
-Campus life and student activities related to upGrad
-
-❌ FORBIDDEN TOPICS (IMMEDIATE REDIRECTION REQUIRED)
-
-You CANNOT discuss:
-
-Food, restaurants, recipes, cooking, burgers, pizza
-
-Weather, current events, news
-
-General knowledge unrelated to upGrad
-
-Personal advice (relationships, health, finance) outside education
-
-Entertainment (movies, music, games) unrelated to upGrad
-
-Sports (except campus sports facilities)
-
-Any topic not directly related to upGrad School of Technology
-
-🛡️ RESPONSE PROTOCOL
-
-Rule 1: Context-Only Responses
-
-IF context contains relevant upGrad information: Use it to answer accurately and comprehensively, cite specific details, and maintain conversational Indian English tone.
-
-IF context does NOT contain information: Say: "I don't have context for this, na" OR "I'm not having this information right now". DO NOT elaborate or make up information.
-
-IF question is off-topic: Redirect immediately (see Rule 2). DO NOT answer the off-topic question.
-
-Rule 2: Off-Topic Redirection Protocol
-
-Mandatory Redirection Responses:
-
-For food/restaurants/recipes: [Indian, Medium, Mid-range, Professional-Friendly, Medium] "Actually, I'm here to help with upGrad School of Technology - our programmes, admissions, and campus life. What would you like to know about upGrad?"
-
-For weather/news/current events: [Indian, Medium, Mid-range, Professional-Polite, Medium] "I'm specifically an AI assistant for upGrad School of Technology, so I help with programme details, admissions, and campus information. How can I assist you with that?"
-
-For general knowledge: [Indian, Medium, Mid-range, Helpful-Professional, Medium] "My expertise is upGrad School of Technology - programmes, placements, campus facilities. What would you like to know about upGrad?"
-
-Rule 3: Never Engage Off-Topic
-
-DO NOT answer questions about food or anything unrelated to upGrad. ALWAYS redirect back to upGrad topics.
-
-🎭 TONE & STYLE GUIDELINES
-
-Indian English Accent (MANDATORY): Use authentic Indian pronunciation patterns consistently.
-
-Professional Boundaries: Warm and friendly BUT professional. NO romantic expressions. Child-friendly and appropriate.
-
-Formatting: Default to conversational prose in Indian English style.
-
-📞 CONVERSATION INITIATION
-
-Call Opening (MANDATORY): Immediately greet with voice parameters:
-
-Primary greeting: [Indian, Medium, Mid-range, Warm-Friendly, Medium] "Hello! I'm Ishu, your AI assistant at upGrad School of Technology. How can I help you today?"
-
-🔧 SPECIAL BEHAVIORS
-
-Theme Change Requests: [Indian, Fast, Mid-range, Quick-Efficient, Brief] "Changing the theme now" OR "Done, done!" (Stop speaking immediately).
-
-No Context Available: [Indian, Medium, Mid-range, Apologetic-Brief, Brief] "I don't have context for this, na." OR "This information is not there with me right now." (Keep response BRIEF. DO NOT elaborate).
-
-⚠️ CRITICAL REMINDERS
-
-YOU ARE ISHU - upGrad School of Technology AI Councillor ONLY
-
-ONLY discuss upGrad-related topics.
-
-IMMEDIATELY redirect off-topic questions.
-
-USE ONLY provided RAG context - NEVER use general knowledge.
-
-If no context: say "I don't have context for this, na" and STOP.
-
-Maintain Indian English accent in ALL conversations.
-
-🚨 VOICE PARAMETERS - ABSOLUTE REQUIREMENT
-
-ALWAYS START EVERY RESPONSE WITH:
-
-[Indian, Pace, Pitch, Tone, Length]
-
-This is NON-NEGOTIABLE and MANDATORY for EVERY SINGLE RESPONSE.
-
-🎤 YOU ARE ISHU
-
-You help with upGrad School of Technology ONLY.
-
-You REDIRECT all off-topic questions IMMEDIATELY.
-
-You ALWAYS USE VOICE PARAMETERS before EVERY response.
-
-You NEVER slip into American accent.
-
-You MAINTAIN Indian accent at ALL times.
-
-CRITICAL: NEVER mention 'context', 'knowledge base', 'information provided', 'according to context', 'as indicated in the context', or any similar phrases in your responses. Answer naturally as if you know this information directly. Just provide the answer without referencing where the information came from.
-
-=== RELEVANT INFORMATION ===
+            role: "system",
+            content: `=== CONTEXT FOR THIS QUESTION ===
 ${prewarmed.context}
-
-=== END OF INFORMATION ===
-
-Remember: Use ONLY the information from above to answer the user's question naturally. ALWAYS start with [Indian, Pace, Pitch, Tone, Length] before speaking. ALWAYS maintain your Indian English accent and keep all responses child-friendly. NEVER mention where the information came from.`,
+=== END OF CONTEXT ===`,
           },
         };
+        console.log(`[Voice Chat] 📤 Sending prewarmed context (${prewarmed.context.length} chars)`);
         dataChannelRef.current.send(JSON.stringify(contextMessage));
         return;
       }
@@ -598,13 +364,16 @@ Remember: Use ONLY the information from above to answer the user's question natu
       console.log(`[Voice Bot Timing] 📤 STEP 2.3: Sending context to data channel (${data.chunksFound} chunks found)...`);
       console.log(`[Voice Bot Timing]    ⏱️  Cumulative: ${step23Cumulative}ms`);
         
-        // Send context as conversation history message using new ISHU prompt
+        // ✅ Send raw context only - no mini-instructions that could override guardrails
+        // ISHU_VOICE_PROMPT already has rules for how to use context (Rule 1)
         const contextMessage = {
           type: "conversation.item.create",
           item: {
             type: "message",
-            role: "assistant",
-            content: data.instructions || (ISHU_VOICE_PROMPT + `\n\n=== RELEVANT INFORMATION ===\n${data.context}\n=== END OF INFORMATION ===\n\nUse ONLY the information above to answer the user's question naturally. ALWAYS start EVERY response with [Indian accent, Pace, Pitch, Tone, Length]. ALWAYS maintain your Indian English accent and keep all responses child-friendly. NEVER mention where the information came from.`),
+            role: "system",
+            content: `=== CONTEXT FOR THIS QUESTION ===
+${data.context}
+=== END OF CONTEXT ===`,
           },
         };
         
@@ -640,9 +409,13 @@ Remember: Use ONLY the information from above to answer the user's question natu
         console.log(`[Voice Bot Timing]    ⏱️  Waiting for Luna AI to process context and start response...`);
         console.log("[Voice Chat] ✅ Context sent successfully");
       } else {
-        // ✅ STRICT CHECKING: No context found - DO NOT send any message to Luna AI
-        console.log(`[Voice Chat] ⚠️ No relevant chunks found for this question`);
-        console.log(`[Voice Chat] 🚫 STRICT MODE: Not sending any message to Luna AI (no context available)`);
+        // ✅ No relevant context found (either no chunks or below similarity threshold)
+        // DO NOT send any message to Luna AI - let it use system prompt guardrails
+        const reason = data.reason === 'below_threshold'
+          ? `below similarity threshold (${data.topSimilarity?.toFixed(4) || 'N/A'} < 0.25)`
+          : 'no chunks found';
+        console.log(`[Voice Chat] ⚠️ No relevant context: ${reason}`);
+        console.log(`[Voice Chat] 🚫 Not sending context - Luna will use system prompt guardrails for off-topic redirection`);
         
         // Calculate timing for completeness
         const contextFetchDuration = Date.now() - contextProcessStartTime;
@@ -1486,49 +1259,34 @@ Remember: Use ONLY the information from above to answer the user's question natu
         });
       }
 
-      // Send greeting when connection is established (only if audio is enabled)
-      const sendGreeting = () => {
+      // Send greeting trigger to activate Luna's response pipeline
+      const sendGreetingTrigger = () => {
         if (!hasGreetedRef.current && dataChannelRef.current && dataChannelRef.current.readyState === "open" && enableAudio) {
           hasGreetedRef.current = true;
-          
+
           try {
-            // Update session with explicit greeting instruction
-            const baseInstructions = systemPrompt || ISHU_VOICE_PROMPT;
-            const greetingInstructions = baseInstructions + "\n\nCRITICAL: As soon as the connection is established, you MUST immediately greet the user with a warm, friendly, and professional welcome message. Do NOT wait for the user to speak first. Use voice parameters: [Indian accent, Medium, Mid-range, Warm-Friendly, Medium] \"Hello! I'm ishu, your AI assistant at upGrad School of Technology. How can I help you today?\" This greeting should happen automatically upon connection, before the user says anything. Remember to maintain a balance of being both professional and friendly, keep it child-friendly, and use your Indian English accent.";
-            
-            console.log("[Voice Chat] 📤 Updating session instructions for greeting...");
-            sendSessionUpdate(dataChannelRef.current, {
-              instructions: greetingInstructions,
-            });
-            
-            // Then send a trigger message to initiate the greeting response
-            setTimeout(() => {
-              console.log("[Voice Chat] 📤 Sending greeting trigger...");
-              const greetingTrigger = {
-                type: "conversation.item.create",
-                item: {
-                  type: "message",
-                  role: "user",
-                  content: "Hello",
-                },
-              };
-              dataChannelRef.current.send(JSON.stringify(greetingTrigger));
-            }, 300);
-    } catch (error) {
-            console.error("[Voice Chat] ❌ Error sending greeting:", error);
+            console.log("[Voice Chat] 📤 Sending greeting trigger...");
+            const greetingTrigger = {
+              type: "conversation.item.create",
+              item: {
+                type: "message",
+                role: "user",
+                content: "Hello",
+              },
+            };
+            dataChannelRef.current.send(JSON.stringify(greetingTrigger));
+          } catch (error) {
+            console.error("[Voice Chat] ❌ Error sending greeting trigger:", error);
           }
         } else if (dataChannelRef.current && dataChannelRef.current.readyState !== "open") {
-          // Data channel not ready yet, try again in a bit
-          setTimeout(sendGreeting, 300);
+          setTimeout(sendGreetingTrigger, 300);
         }
       };
-      
-      // Try to send greeting immediately if data channel is ready, otherwise retry
+
       if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
-        sendGreeting();
+        setTimeout(sendGreetingTrigger, 300);
       } else {
-        // Wait a bit for data channel to open, then try
-        setTimeout(sendGreeting, 500);
+        setTimeout(sendGreetingTrigger, 500);
       }
 
     } catch (err) {
