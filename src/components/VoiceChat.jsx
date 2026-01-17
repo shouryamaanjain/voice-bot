@@ -87,12 +87,18 @@ export const VoiceChat = forwardRef(function VoiceChat(props, ref) {
    * Fetch and send context dynamically for a user question
    */
   // Prewarm context cache to reduce latency
+  // ✅ Normalize text for cache key matching (handles STT variations)
+  const normalizeCacheKey = (text) => {
+    return text.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim().slice(0, 80);
+  };
+
   const prewarmContext = useCallback(async (question) => {
     if (!question || !question.trim()) return;
     if (!dataChannelRef.current || dataChannelRef.current.readyState !== "open") return;
 
     const trimmed = question.trim();
-    const key = `${sessionId || "anon"}::${category || "general"}::${trimmed.slice(0, 100)}`;
+    const normalizedKey = normalizeCacheKey(trimmed);
+    const key = `${sessionId || "anon"}::${category || "general"}::${normalizedKey}`;
 
     // If already prewarmed, skip
     if (prewarmCacheRef.current.has(key)) return;
@@ -114,13 +120,28 @@ export const VoiceChat = forwardRef(function VoiceChat(props, ref) {
           category: category,
           sessionId: sessionId,
           intent: category || "general",
-          matchCount: 3, // small, fast prewarm
+          matchCount: 3,
         }),
         signal: controller.signal,
       });
       if (!response.ok) return;
       const data = await response.json();
       prewarmCacheRef.current.set(key, data);
+
+      // ✅ OPTIMIZATION: Update instructions with context WHILE user is still speaking
+      // This ensures Luna has context BEFORE it generates a response
+      if (data.context && data.chunksFound > 0) {
+        const updatedInstructions = `${ISHU_VOICE_PROMPT}
+
+=== CONTEXT (Use this to answer the user's question) ===
+${data.context}
+=== END CONTEXT ===`;
+
+        console.log("[Voice Chat] 📤 Pre-injecting context via session.update (while user speaking)...");
+        sendSessionUpdate(dataChannelRef.current, {
+          instructions: updatedInstructions
+        });
+      }
     } catch (err) {
       // ignore prewarm errors
     } finally {
@@ -170,6 +191,12 @@ export const VoiceChat = forwardRef(function VoiceChat(props, ref) {
             setInterimTranscript(combinedText);
             // Also update currentUserMessage for immediate UI feedback
             setCurrentUserMessage(combinedText);
+
+            // ✅ OPTIMIZATION: Start pre-fetching RAG context while user is still speaking
+            // This parallelizes STT + RAG fetch, saving ~300-500ms
+            if (combinedText.length > 10) { // Only prewarm if we have meaningful text
+              prewarmContext(combinedText);
+            }
           }
         }
       };
@@ -266,24 +293,14 @@ export const VoiceChat = forwardRef(function VoiceChat(props, ref) {
     }
 
     try {
-      // Use prewarmed result if available
-      const key = `${sessionId || "anon"}::${category || "general"}::${question.trim().slice(0, 100)}`;
+      // Use prewarmed result if available (using normalized key for STT variation tolerance)
+      const normalizedKey = normalizeCacheKey(question.trim());
+      const key = `${sessionId || "anon"}::${category || "general"}::${normalizedKey}`;
       const prewarmed = prewarmCacheRef.current.get(key);
       if (prewarmed && prewarmed.context) {
-        // ✅ Send raw context only - no mini-instructions that could override guardrails
-        // ISHU_VOICE_PROMPT already has rules for how to use context (Rule 1)
-        const contextMessage = {
-          type: "conversation.item.create",
-          item: {
-            type: "message",
-            role: "system",
-            content: `=== CONTEXT FOR THIS QUESTION ===
-${prewarmed.context}
-=== END OF CONTEXT ===`,
-          },
-        };
-        console.log(`[Voice Chat] 📤 Sending prewarmed context (${prewarmed.context.length} chars)`);
-        dataChannelRef.current.send(JSON.stringify(contextMessage));
+        // ✅ Context was already injected via session.update in prewarmContext()
+        // Luna already has the context in its instructions, so just let it respond naturally
+        console.log(`[Voice Chat] ✅ Using prewarmed context (${prewarmed.context.length} chars) - already injected via session.update`);
         return;
       }
       
@@ -358,43 +375,52 @@ ${prewarmed.context}
       console.log(`[Voice Bot Timing]    ⏱️  Cumulative: ${step22Cumulative}ms`);
       
       if (data.chunksFound > 0 && data.context) {
-      // ⏱️ STEP 2.3: Sending Context to Data Channel
+      // ⏱️ STEP 2.3: Sending Context as User Message
       const contextSendStartTime = Date.now();
       const step23Cumulative = contextSendStartTime - (processStartTime || contextProcessStartTime);
-      console.log(`[Voice Bot Timing] 📤 STEP 2.3: Sending context to data channel (${data.chunksFound} chunks found)...`);
+      console.log(`[Voice Bot Timing] 📤 STEP 2.3: Sending context as user message (${data.chunksFound} chunks found)...`);
       console.log(`[Voice Bot Timing]    ⏱️  Cumulative: ${step23Cumulative}ms`);
-        
-        // ✅ Send raw context only - no mini-instructions that could override guardrails
-        // ISHU_VOICE_PROMPT already has rules for how to use context (Rule 1)
+
+        // ✅ Send context + question together so Luna answers with context
         const contextMessage = {
           type: "conversation.item.create",
           item: {
             type: "message",
-            role: "system",
-            content: `=== CONTEXT FOR THIS QUESTION ===
-${data.context}
-=== END OF CONTEXT ===`,
+            role: "user",
+            content: `[CONTEXT]\n${data.context}\n[/CONTEXT]\n\nQuestion: ${question}`,
           },
         };
-        
-        console.log("[Voice Chat] 📤 Sending context as conversation message...");
+
+        // ✅ Cancel any in-progress automatic response from audio
+        console.log("[Voice Chat] 🛑 Cancelling automatic response...");
+        dataChannelRef.current.send(JSON.stringify({ type: "response.cancel" }));
+
+        console.log("[Voice Chat] 📤 Sending context + question...");
         // Store when context is sent (for Luna AI processing time calculation)
         // Set this right before sending to capture the exact send time
         const contextSentTimestamp = Date.now();
         contextSentTimeRef.current = contextSentTimestamp;
-        
+
         // ✅ OPTIMIZATION: Track context message size for monitoring
         const contextMessageStr = JSON.stringify(contextMessage);
         const contextMessageSize = contextMessageStr.length;
         const contextMessageSizeKB = (contextMessageSize / 1024).toFixed(2);
-        
+
         if (contextMessageSize > 50000) { // 50KB
           console.warn(`[Voice Bot Timing] ⚠️  Large context message (${contextMessageSizeKB} KB) may impact Luna AI processing time`);
         }
-        
+
         console.log(`[Voice Bot Timing]    📊 Context message size: ${contextMessageSize.toLocaleString()} chars (${contextMessageSizeKB} KB)`);
-        
+
         dataChannelRef.current.send(contextMessageStr);
+
+        // ✅ Force Luna to generate a response using the context
+        // This triggers a new response that will use the context we just sent
+        const responseCreate = {
+          type: "response.create",
+        };
+        console.log("[Voice Chat] 📤 Triggering response.create to use context...");
+        dataChannelRef.current.send(JSON.stringify(responseCreate));
         const contextSendDuration = Date.now() - contextSendStartTime;
         const totalContextDuration = Date.now() - contextProcessStartTime;
         const apiRequestDuration = contextSendStartTime - contextProcessStartTime;
